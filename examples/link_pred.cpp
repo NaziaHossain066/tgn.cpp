@@ -1,5 +1,7 @@
 #include <torch/torch.h>
 
+#include <fmt/format.h>
+
 #include <chrono>
 #include <cstddef>
 #include <iostream>
@@ -93,8 +95,8 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
 
     util::progress_bar(
         e_id - e_range.start(), e_range.size(), start_time,
-        std::format("Epoch {:2d}/{:2d} [Train]", current_epoch, args.epochs),
-        std::format("Loss: {:.3f}",
+        fmt::format("Epoch {:2d}/{:2d} [Train]", current_epoch, args.epochs),
+        fmt::format("Loss: {:.3f}",
                     total_loss / static_cast<float>(std::max<std::size_t>(
                                      1, e_id - e_range.start()))));
   }
@@ -137,8 +139,8 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
 
     util::progress_bar(
         e_id - e_range.start(), e_range.size(), start_time,
-        std::format("            [Valid]", current_epoch, args.epochs),
-        std::format("MRR:  {:.3f}",
+        fmt::format("            [Valid]", current_epoch, args.epochs),
+        fmt::format("MRR:  {:.3f}",
                     std::accumulate(perf_list.begin(), perf_list.end(), 0.0F) /
                         static_cast<float>(perf_list.size())));
   }

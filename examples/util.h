@@ -1,5 +1,6 @@
 #pragma once
 
+#include <fmt/format.h>
 #include <logging.h>
 #include <torch/torch.h>
 
@@ -137,12 +138,12 @@ inline auto progress_bar = [](std::size_t current, std::size_t total,
 
   auto format_val = [](std::size_t n) -> std::string {
     if (n >= 1'000'000) {
-      return std::format("{:>5.1f}M", n / 1'000'000.0);
+      return fmt::format("{:>5.1f}M", n / 1'000'000.0);
     }
     if (n >= 1'000) {
-      return std::format("{:>5.1f}K", n / 1'000.0);
+      return fmt::format("{:>5.1f}K", n / 1'000.0);
     }
-    return std::format("{:>6}", n);
+    return fmt::format("{:>6}", n);
   };
 
   std::cout << "\33[2K\r" << std::left << std::setw(18) << prefix << " ┃";

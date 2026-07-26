@@ -13,6 +13,7 @@ option(TGN_BUILD_PYTHON "Build Python Bindings" OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_compile_options(
     -Wall
     -Wextra
@@ -64,6 +65,14 @@ endif()
 
 find_package(OpenMP REQUIRED)
 
+message(STATUS "Downloading fmt")
+FetchContent_Declare(
+    fmt
+    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+    GIT_TAG 11.1.4
+)
+FetchContent_MakeAvailable(fmt)
+
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     message(STATUS "Debug build: Enabling Address and UndefinedBehavior Sanitizers")
     add_compile_options(-fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer)
@@ -85,6 +94,7 @@ target_link_libraries(tguf
     PUBLIC
         "${TORCH_LIBRARIES}"
         OpenMP::OpenMP_CXX
+        fmt::fmt
 )
 target_include_directories(tguf
     PUBLIC

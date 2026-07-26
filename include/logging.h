@@ -1,7 +1,9 @@
 #pragma once
 
+#include <fmt/chrono.h>
+#include <fmt/format.h>
+
 #include <chrono>
-#include <format>
 #include <iostream>
 #include <string_view>
 
@@ -46,8 +48,8 @@ inline void log_impl(LogLevel level, std::string_view file, int line,
   const auto pos = file.find_last_of("/\\");
   const auto short_file =
       (pos == std::string_view::npos) ? file : file.substr(pos + 1);
-  const auto loc = std::format("{}:{}", short_file, line);
-  std::cerr << std::format("{} {:%H:%M:%S} [{:<17}] {}\n", prefix, now, loc,
+  const auto loc = fmt::format("{}:{}", short_file, line);
+  std::cerr << fmt::format("{} {:%H:%M:%S} [{:<17}] {}\n", prefix, now, loc,
                            msg);
 }
 
@@ -58,7 +60,7 @@ inline void log_impl(LogLevel level, std::string_view file, int line,
 #ifndef NDEBUG
 #define TGUF_LOG_DEBUG(...)                                                 \
   tguf::detail::log_impl(tguf::detail::LogLevel::DEBUG, __FILE__, __LINE__, \
-                         std::format(__VA_ARGS__))
+                         fmt::format(__VA_ARGS__))
 #else
 #define TGUF_LOG_DEBUG(...) ((void)0)
 #endif
@@ -67,16 +69,16 @@ inline void log_impl(LogLevel level, std::string_view file, int line,
 /// @brief Logs an informational message.
 #define TGUF_LOG_INFO(msg, ...)                                            \
   tguf::detail::log_impl(tguf::detail::LogLevel::INFO, __FILE__, __LINE__, \
-                         std::format(msg __VA_OPT__(, ) __VA_ARGS__))
+                         fmt::format(msg __VA_OPT__(, ) __VA_ARGS__))
 
 /// @def TGUF_LOG_WARN
 /// @brief Logs a warning message for non-critical issues.
 #define TGUF_LOG_WARN(msg, ...)                                            \
   tguf::detail::log_impl(tguf::detail::LogLevel::WARN, __FILE__, __LINE__, \
-                         std::format(msg __VA_OPT__(, ) __VA_ARGS__))
+                         fmt::format(msg __VA_OPT__(, ) __VA_ARGS__))
 
 /// @def TGUF_LOG_ERROR
 /// @brief Logs an error message for critical failures.
 #define TGUF_LOG_ERROR(msg, ...)                                            \
   tguf::detail::log_impl(tguf::detail::LogLevel::ERROR, __FILE__, __LINE__, \
-                         std::format(msg __VA_OPT__(, ) __VA_ARGS__))
+                         fmt::format(msg __VA_OPT__(, ) __VA_ARGS__))
