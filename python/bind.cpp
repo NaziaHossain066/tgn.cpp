@@ -370,8 +370,11 @@ Use :meth:`from_memory` or :meth:`from_tguf` to instantiate.
           [](const tguf::TGStore &self, nb::ndarray<> e_id) {
             nb::gil_scoped_release release;
             auto res = self.gather_timestamps(tensor_view(e_id, torch::kLong));
-            return transfer_ownership_to_python<std::int64_t, 1>(
-                std::move(res));
+            {
+              nb::gil_scoped_acquire acquire;
+              return transfer_ownership_to_python<std::int64_t, 1>(
+                  std::move(res));
+            }
           },
           nb::arg("e_id"), "Vectorized gather of edge timestamps.")
 
@@ -380,7 +383,10 @@ Use :meth:`from_memory` or :meth:`from_tguf` to instantiate.
           [](const tguf::TGStore &self, nb::ndarray<> e_id) {
             nb::gil_scoped_release release;
             auto res = self.gather_msgs(tensor_view(e_id, torch::kLong));
-            return transfer_ownership_to_python<float, 2>(std::move(res));
+            {
+              nb::gil_scoped_acquire acquire;
+              return transfer_ownership_to_python<float, 2>(std::move(res));
+            }
           },
           nb::arg("e_id"), "Vectorized gather of edge features (messages).")
 
@@ -389,7 +395,10 @@ Use :meth:`from_memory` or :meth:`from_tguf` to instantiate.
           [](const tguf::TGStore &self, nb::ndarray<> n_id) {
             nb::gil_scoped_release release;
             auto res = self.gather_node_feats(tensor_view(n_id, torch::kLong));
-            return transfer_ownership_to_python<float, 2>(std::move(res));
+            {
+              nb::gil_scoped_acquire acquire;
+              return transfer_ownership_to_python<float, 2>(std::move(res));
+            }
           },
           nb::arg("n_id"), "Vectorized gather of static node features.")
 
