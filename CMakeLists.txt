@@ -27,35 +27,61 @@ add_compile_options(
 
 include(FetchContent)
 
-set(CUDA_VERSION "cpu" CACHE STRING "CUDA version (cpu, 12.6, 12.8, 13.0)")
-
-if(APPLE) # Target Apple Silicon (M1/M2/M3)
-    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cpu/libtorch-macos-arm64-2.10.0.zip")
-    message(STATUS "TGUF: Target System is APPLE (ARM64). Using CPU LibTorch.")
-else() # Target Linux x86_64
-    if(CUDA_VERSION STREQUAL "cpu")
-        set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-2.10.0%2Bcpu.zip")
-        message(STATUS "TGUF: Target System is LINUX (CPU).")
+if(TGN_BUILD_PYTHON)
+    # Reuse the installed torch's libtorch instead of fetching a second copy
+    if(CMAKE_VERSION VERSION_LESS 3.18)
+        set(DEV_MODULE Development)
     else()
-        # Clean "12.6" -> "126" for the URL mapping
-        string(REPLACE "." "" CUDA_TAG ${CUDA_VERSION})
-        set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu${CUDA_TAG}/libtorch-shared-with-deps-2.10.0%2Bcu${CUDA_TAG}.zip")
-        message(STATUS "TGUF: Target System is LINUX (CUDA ${CUDA_VERSION}).")
-        enable_language(CUDA)
-        add_compile_definitions(TGN_WITH_CUDA)
+        set(DEV_MODULE Development.Module)
     endif()
+    find_package(Python 3.10 COMPONENTS Interpreter ${DEV_MODULE} REQUIRED)
+
+    execute_process(
+        COMMAND "${Python_EXECUTABLE}" -c "import torch; print(torch.utils.cmake_prefix_path)"
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        OUTPUT_VARIABLE TORCH_CMAKE_PREFIX
+        RESULT_VARIABLE TORCH_IMPORT_RESULT
+    )
+    if(NOT TORCH_IMPORT_RESULT EQUAL 0)
+        message(FATAL_ERROR
+            "TGN_BUILD_PYTHON is ON but `import torch` failed in "
+            "${Python_EXECUTABLE}. Install torch in this environment before "
+            "configuring (e.g. `uv run --with torch ...`).")
+    endif()
+    message(STATUS "TGUF: Using libtorch bundled with the installed torch package (${TORCH_CMAKE_PREFIX})")
+    set(CMAKE_PREFIX_PATH ${TORCH_CMAKE_PREFIX})
+else()
+    set(CUDA_VERSION "cpu" CACHE STRING "CUDA version (cpu, 12.6, 12.8, 13.0)")
+
+    if(APPLE) # Target Apple Silicon (M1/M2/M3)
+        set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cpu/libtorch-macos-arm64-2.10.0.zip")
+        message(STATUS "TGUF: Target System is APPLE (ARM64). Using CPU LibTorch.")
+    else() # Target Linux x86_64
+        if(CUDA_VERSION STREQUAL "cpu")
+            set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-2.10.0%2Bcpu.zip")
+            message(STATUS "TGUF: Target System is LINUX (CPU).")
+        else()
+            # Clean "12.6" -> "126" for the URL mapping
+            string(REPLACE "." "" CUDA_TAG ${CUDA_VERSION})
+            set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu${CUDA_TAG}/libtorch-shared-with-deps-2.10.0%2Bcu${CUDA_TAG}.zip")
+            message(STATUS "TGUF: Target System is LINUX (CUDA ${CUDA_VERSION}).")
+            enable_language(CUDA)
+            add_compile_definitions(TGN_WITH_CUDA)
+        endif()
+    endif()
+
+    message(STATUS "Downloading Libtorch (${LIBTORCH_URL})")
+    FetchContent_Declare(
+        libtorch
+        URL ${LIBTORCH_URL}
+        DOWNLOAD_EXTRACT_TIMESTAMP ON
+    )
+    FetchContent_MakeAvailable(libtorch)
+    message(STATUS "Downloading Libtorch (${LIBTORCH_URL}) - done")
+
+    set(CMAKE_PREFIX_PATH ${libtorch_SOURCE_DIR})
 endif()
 
-message(STATUS "Downloading Libtorch (${LIBTORCH_URL})")
-FetchContent_Declare(
-    libtorch
-    URL ${LIBTORCH_URL}
-    DOWNLOAD_EXTRACT_TIMESTAMP ON
-)
-FetchContent_MakeAvailable(libtorch)
-message(STATUS "Downloading Libtorch (${LIBTORCH_URL}) - done")
-
-set(CMAKE_PREFIX_PATH ${libtorch_SOURCE_DIR})
 find_package(Torch REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
@@ -80,8 +106,10 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    message(STATUS "Release build: Enabling some Compiler Optimizations")
-    add_compile_options(-O3 -march=native -ffast-math -pthread)
+    # Override for portable builds: "native" SIGILLs on hosts lacking the build host's ISA extensions
+    set(TGN_ARCH "native" CACHE STRING "Target CPU arch for -march (e.g. native, x86-64-v3, znver2)")
+    message(STATUS "Release build: Enabling some Compiler Optimizations (-march=${TGN_ARCH})")
+    add_compile_options(-O3 -march=${TGN_ARCH} -ffast-math -pthread)
 endif()
 
 # TGUF Target

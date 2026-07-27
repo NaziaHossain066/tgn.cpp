@@ -46,14 +46,13 @@ add_custom_command(
         "${CMAKE_SOURCE_DIR}/python/tguf/_tguf_py.pyi"
 )
 
-# TODO(kuba): This is surely not the simplest way to do things
-set(LOCAL_TORCH_LIB "${CMAKE_BINARY_DIR}/_deps/libtorch-src/lib")
+set(LOCAL_TORCH_LIB "${TORCH_INSTALL_PREFIX}/lib")
 get_target_property(TGUF_BINARY_DIR tguf BINARY_DIR)
 
 # $ORIGIN: Look in the current folder (for installed versions)
 # $ORIGIN/..: Look in the parent folder (common in build trees)
 # ${TGUF_BINARY_DIR}: Look exactly where the C++ build put libtguf.so
-# ${LOCAL_TORCH_LIB}: Look where FetchContent put LibTorch
+# ${LOCAL_TORCH_LIB}: Look where the in-use libtorch actually lives
 set_target_properties(_tguf_py PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH "$ORIGIN;$ORIGIN/..;${TGUF_BINARY_DIR};${LOCAL_TORCH_LIB}"
