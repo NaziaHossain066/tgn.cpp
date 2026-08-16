@@ -21,7 +21,7 @@ OUTPUT_PATH="$PROJECT_ROOT/data/$DATASET_NAME.tguf"
 uv run --no-project \
     --with py-tgb \
     --with numpy \
-    --with torch \
+    --with "torch @ https://download.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp310-cp310-manylinux_2_28_x86_64.whl" \
     --with tqdm \
     --with pandas==2.2.3 \
     --with-editable "$PROJECT_ROOT/python" \

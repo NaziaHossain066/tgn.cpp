@@ -128,6 +128,7 @@ def main() -> None:
                     pbar.update(1)
 
         builder.finalize()
+        print(f"Download complete: {args.output}")
     except Exception as e:
         print(f"Error during streaming: {e}")
 
