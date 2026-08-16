@@ -176,6 +176,7 @@ download-%: data/%.tguf
 python:
 	@(cd python && \
 		uv sync --group dev --no-install-project && \
+		CMAKE_GENERATOR="Unix Makefiles" \
 		SKBUILD_CMAKE_ARGS="$(PYTHON_BUILD_FLAGS)" \
 		uv pip install -e . --no-build-isolation)
 

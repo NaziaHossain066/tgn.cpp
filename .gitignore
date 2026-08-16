@@ -251,6 +251,7 @@ __marimo__/
 
 # Builds
 build/
+.wheel_build/
 cmake-build-*/
 conan/
 CMakeLists.txt.user
