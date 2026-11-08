@@ -198,6 +198,83 @@ class LabelEvent:
     def target(self) -> Annotated[NDArray[numpy.float32], dict(shape=(2))]:
         """Label target values (features/classes)"""
 
+class LabelBatch:
+    """
+    Container for a contiguous range of label rows.
+
+    This structure represents node labels read from a :class:`TGStore`
+    and is returned by :meth:`TGStore.get_label_batch`. Rows are sorted by time,
+    so a batch may start or end in the middle of a label event.
+
+    Attributes:
+        n_id (ndarray):
+            Node IDs of the label rows of shape [B], dtype=int64.
+
+        time (ndarray):
+            Timestamps of the label rows of shape [B], dtype=int64.
+
+        target (ndarray):
+            Label targets of shape [B, label_dim], dtype=float32.
+
+    Notes:
+        On CPU, `n_id`, `time` and `target` are zero-copy views of the
+        store's label data and must not be modified.
+
+    See also:
+        - :meth:`TGStore.get_label_batch`
+        - :attr:`TGStore.label_event_table`
+    """
+
+    @property
+    def n_id(self) -> Annotated[NDArray[numpy.int64], dict(shape=(1))]:
+        """Node IDs of the label rows, shape [B], dtype=int64."""
+
+    @property
+    def time(self) -> Annotated[NDArray[numpy.int64], dict(shape=(1))]:
+        """Timestamps of the label rows, shape [B], dtype=int64."""
+
+    @property
+    def target(self) -> Annotated[NDArray[numpy.float32], dict(shape=(2))]:
+        """Label targets, shape [B, label_dim], dtype=float32."""
+
+class LabelEventTable:
+    """
+    Per-label-event summary of the label rows.
+
+    A label event is the group of label rows sharing one timestamp. Label event `k`
+    covers label rows `[row_offset[k], row_offset[k + 1])`. The last entry of
+    `row_offset` is the total number of label rows. Returned by
+    :attr:`TGStore.label_event_table`.
+
+    Attributes:
+        time (ndarray):
+            Timestamp of each label event of shape [K], dtype=int64.
+
+        row_offset (ndarray):
+            First label row of each label event of shape [K + 1], dtype=int64.
+            The last entry is the total number of label rows.
+
+        cutoff (ndarray):
+            Number of edges strictly before each label event of shape [K],
+            dtype=int64.
+    """
+
+    @property
+    def time(self) -> Annotated[NDArray[numpy.int64], dict(shape=(1))]:
+        """Timestamp of each label event, shape [K], dtype=int64."""
+
+    @property
+    def row_offset(self) -> Annotated[NDArray[numpy.int64], dict(shape=(1))]:
+        """
+        First label row of each label event; the last entry is the total number of label rows, shape [K + 1], dtype=int64.
+        """
+
+    @property
+    def cutoff(self) -> Annotated[NDArray[numpy.int64], dict(shape=(1))]:
+        """
+        Number of edges strictly before each label event, shape [K], dtype=int64.
+        """
+
 class NegStrategy(enum.Enum):
     """Negative sampling strategies for batch retrieval."""
 
@@ -299,6 +376,13 @@ class TGStore:
 
     def get_label_event(self, l_id: int) -> LabelEvent:
         """Retrieve a specific label event."""
+
+    def get_label_batch(self, start: int, size: int) -> LabelBatch:
+        """Retrieve a zero-copy slice of the label rows."""
+
+    @property
+    def label_event_table(self) -> LabelEventTable:
+        """Timestamp, row range and edge cutoff of every label event."""
 
 class TGUFBuilder:
     """

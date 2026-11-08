@@ -1,7 +1,9 @@
 from ._tguf_py import (
     Batch,
     IndexRange,
+    LabelBatch,
     LabelEvent,
+    LabelEventTable,
     NegStrategy,
     TGStore,
     TGUFBuilder,
@@ -11,7 +13,9 @@ from ._tguf_py import (
 __all__ = [
     "Batch",
     "IndexRange",
+    "LabelBatch",
     "LabelEvent",
+    "LabelEventTable",
     "NegStrategy",
     "TGStore",
     "TGUFBuilder",

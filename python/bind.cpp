@@ -280,6 +280,105 @@ Args:
           },
           "Label target values (features/classes)");
 
+  nb::class_<tguf::LabelBatch>(m, "LabelBatch", R"doc(
+Container for a contiguous range of label rows.
+
+This structure represents node labels read from a :class:`TGStore`
+and is returned by :meth:`TGStore.get_label_batch`. Rows are sorted by time,
+so a batch may start or end in the middle of a label event.
+
+Attributes:
+    n_id (ndarray):
+        Node IDs of the label rows of shape [B], dtype=int64.
+
+    time (ndarray):
+        Timestamps of the label rows of shape [B], dtype=int64.
+
+    target (ndarray):
+        Label targets of shape [B, label_dim], dtype=float32.
+
+Notes:
+    On CPU, `n_id`, `time` and `target` are zero-copy views of the
+    store's label data and must not be modified.
+
+See also:
+    - :meth:`TGStore.get_label_batch`
+    - :attr:`TGStore.label_event_table`
+)doc")
+      .def_prop_ro(
+          "n_id",
+          [](const tguf::LabelBatch &b) {
+            return nb::ndarray<nb::pytorch, std::int64_t, nb::shape<1>>(
+                b.n_id.data_ptr<std::int64_t>(),
+                {static_cast<std::size_t>(b.n_id.size(0))}, nb::handle());
+          },
+          "Node IDs of the label rows, shape [B], dtype=int64.")
+      .def_prop_ro(
+          "time",
+          [](const tguf::LabelBatch &b) {
+            return nb::ndarray<nb::pytorch, std::int64_t, nb::shape<1>>(
+                b.time.data_ptr<std::int64_t>(),
+                {static_cast<std::size_t>(b.time.size(0))}, nb::handle());
+          },
+          "Timestamps of the label rows, shape [B], dtype=int64.")
+      .def_prop_ro(
+          "target",
+          [](const tguf::LabelBatch &b) {
+            return nb::ndarray<nb::pytorch, float, nb::shape<2>>(
+                b.target.data_ptr<float>(),
+                {static_cast<std::size_t>(b.target.size(0)),
+                 static_cast<std::size_t>(b.target.size(1))},
+                nb::handle());
+          },
+          "Label targets, shape [B, label_dim], dtype=float32.");
+
+  nb::class_<tguf::LabelEventTable>(m, "LabelEventTable", R"doc(
+Per-label-event summary of the label rows.
+
+A label event is the group of label rows sharing one timestamp. Label event `k`
+covers label rows `[row_offset[k], row_offset[k + 1])`. The last entry of
+`row_offset` is the total number of label rows. Returned by
+:attr:`TGStore.label_event_table`.
+
+Attributes:
+    time (ndarray):
+        Timestamp of each label event of shape [K], dtype=int64.
+
+    row_offset (ndarray):
+        First label row of each label event of shape [K + 1], dtype=int64.
+        The last entry is the total number of label rows.
+
+    cutoff (ndarray):
+        Number of edges strictly before each label event of shape [K],
+        dtype=int64.
+)doc")
+      .def_prop_ro(
+          "time",
+          [](const tguf::LabelEventTable &t) {
+            return nb::ndarray<nb::pytorch, std::int64_t, nb::shape<1>>(
+                t.time.data_ptr<std::int64_t>(),
+                {static_cast<std::size_t>(t.time.size(0))}, nb::handle());
+          },
+          "Timestamp of each label event, shape [K], dtype=int64.")
+      .def_prop_ro(
+          "row_offset",
+          [](const tguf::LabelEventTable &t) {
+            return nb::ndarray<nb::pytorch, std::int64_t, nb::shape<1>>(
+                t.row_offset.data_ptr<std::int64_t>(),
+                {static_cast<std::size_t>(t.row_offset.size(0))}, nb::handle());
+          },
+          "First label row of each label event; the last entry is the total "
+          "number of label rows, shape [K + 1], dtype=int64.")
+      .def_prop_ro(
+          "cutoff",
+          [](const tguf::LabelEventTable &t) {
+            return nb::ndarray<nb::pytorch, std::int64_t, nb::shape<1>>(
+                t.cutoff.data_ptr<std::int64_t>(),
+                {static_cast<std::size_t>(t.cutoff.size(0))}, nb::handle());
+          },
+          "Number of edges strictly before each label event, shape [K], "
+          "dtype=int64.");
+
   nb::enum_<tguf::TGStore::NegStrategy>(
       m, "NegStrategy", "Negative sampling strategies for batch retrieval.")
       .value("None_", tguf::TGStore::NegStrategy::None,
@@ -413,7 +512,25 @@ Use :meth:`from_memory` or :meth:`from_tguf` to instantiate.
             nb::gil_scoped_release release;
             return self.get_label_event(l_id);
           },
-          nb::arg("l_id"), "Retrieve a specific label event.");
+          nb::arg("l_id"), "Retrieve a specific label event.")
+
+      .def(
+          "get_label_batch",
+          [](const tguf::TGStore &self, std::size_t start, std::size_t size) {
+            nb::gil_scoped_release release;
+            return self.get_label_batch(start, size);
+          },
+          nb::arg("start"), nb::arg("size"),
+          "Retrieve a zero-copy slice of the label rows.")
+
+      .def_prop_ro(
+          "label_event_table",
+          [](const tguf::TGStore &self) {
+            nb::gil_scoped_release release;
+            return self.label_event_table();
+          },
+          nb::rv_policy::move,
+          "Timestamp, row range and edge cutoff of every label event.");
 
   nb::class_<tguf::TGUFBuilder>(m, "TGUFBuilder",
                                 R"doc(
