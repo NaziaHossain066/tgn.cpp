@@ -33,6 +33,28 @@ struct LabelEvent {
   torch::Tensor target;  ///< Label targets [B, label_dim]
 };
 
+/** @struct LabelBatch
+ * @brief Container for a contiguous range of label rows.
+ */
+struct LabelBatch {
+  torch::Tensor n_id;    ///< Label Node Ids [B]
+  torch::Tensor time;    ///< Label timestamps [B]
+  torch::Tensor target;  ///< Label targets [B, label_dim]
+};
+
+/** @struct LabelEventTable
+ * @brief Per-event summary of the label rows, one entry per label event.
+ *
+ * A label event is the group of label rows sharing one timestamp.
+ */
+struct LabelEventTable {
+  torch::Tensor time;  ///< Timestamp of each label event [K]
+  /// Event k covers label rows [row_offset[k], row_offset[k + 1]) [K + 1]
+  torch::Tensor row_offset;
+  /// Number of edges strictly before each label event [K]
+  torch::Tensor cutoff;
+};
+
 /** @struct TGUFSchema
  * @brief metadata defining the layout of a Temporal Graph Unified Format file.
  */
@@ -213,6 +235,24 @@ class TGStore {
   [[nodiscard]] virtual auto get_label_event(
       std::size_t l_id, torch::Device device = torch::kCPU) const
       -> LabelEvent = 0;
+
+  /** * @brief Retrieves a zero-copy slice of the label rows.
+   * @param start The starting label row.
+   * @param size The number of label rows to include.
+   * @param device The torch::Device to materialize the batch on.
+   * @return A @ref LabelBatch with rows [start, min(start + size,
+   * label_count())). Empty if @p start is past the end or there are no labels.
+   */
+  [[nodiscard]] virtual auto get_label_batch(
+      std::size_t start, std::size_t size,
+      torch::Device device = torch::kCPU) const -> LabelBatch = 0;
+
+  /** * @brief Retrieves the timestamp, row range and edge cutoff of every label
+   * event.
+   * @return A @ref LabelEventTable with K events. Tensors are copies, so
+   * modifying them does not affect the store.
+   */
+  [[nodiscard]] virtual auto label_event_table() const -> LabelEventTable = 0;
 };
 
 }  // namespace tguf

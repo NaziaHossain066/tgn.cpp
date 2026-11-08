@@ -8,6 +8,7 @@
 #include <random>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tguf.h"
 
@@ -703,6 +704,204 @@ TYPED_TEST(TGStoreTest, GetLabelEventSingle) {
   EXPECT_EQ(store->get_label_event(0).n_id[0].template item<std::int64_t>(),
             999);
   EXPECT_EQ(store->get_label_event(0).target[0].template item<float>(), 0);
+}
+
+TYPED_TEST(TGStoreTest, LabelEventTableShape) {
+  const auto store = this->make_store(TestData{
+      .src = torch::zeros({5}, torch::kLong),
+      .dst = torch::zeros({5}, torch::kLong),
+      .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+      .msg = torch::zeros({5, 1}),
+      .label_n_id = torch::tensor({1, 2, 3, 4, 5, 6}, torch::kLong),
+      .label_time = torch::tensor({15, 15, 25, 45, 45, 45}, torch::kLong),
+      .label_target = torch::arange(12, torch::kFloat32).reshape({6, 2})});
+  const auto table = store->label_event_table();
+
+  EXPECT_EQ(table.time.scalar_type(), torch::kLong);
+  EXPECT_EQ(table.row_offset.scalar_type(), torch::kLong);
+  EXPECT_EQ(table.cutoff.scalar_type(), torch::kLong);
+  EXPECT_TRUE(
+      torch::equal(table.time, torch::tensor({15, 25, 45}, torch::kLong)));
+  EXPECT_TRUE(torch::equal(table.row_offset,
+                           torch::tensor({0, 2, 3, 6}, torch::kLong)));
+  EXPECT_TRUE(
+      torch::equal(table.cutoff, torch::tensor({1, 2, 4}, torch::kLong)));
+  EXPECT_EQ(table.row_offset[-1].template item<std::int64_t>(),
+            store->label_count());
+}
+
+TYPED_TEST(TGStoreTest, LabelEventTableMatchesPerEventApis) {
+  const auto store = this->make_store(TestData{
+      .src = torch::zeros({5}, torch::kLong),
+      .dst = torch::zeros({5}, torch::kLong),
+      .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+      .msg = torch::zeros({5, 1}),
+      .label_n_id = torch::tensor({1, 2, 3, 4, 5, 6}, torch::kLong),
+      .label_time = torch::tensor({15, 15, 25, 45, 45, 45}, torch::kLong),
+      .label_target = torch::arange(12, torch::kFloat32).reshape({6, 2})});
+  const auto table = store->label_event_table();
+  const auto num_events = table.time.size(0);
+
+  for (std::int64_t k = 0; k < num_events; ++k) {
+    const auto rows = table.row_offset[k + 1].template item<std::int64_t>() -
+                      table.row_offset[k].template item<std::int64_t>();
+    const auto event = store->get_label_event(k);
+    EXPECT_EQ(rows, event.n_id.size(0));
+    EXPECT_EQ(table.cutoff[k].template item<std::int64_t>(),
+              store->get_edge_cutoff_for_label_event(k));
+  }
+}
+
+TYPED_TEST(TGStoreTest, LabelEventTableTimeMatchesLabelBatchRows) {
+  const auto store = this->make_store(TestData{
+      .src = torch::zeros({5}, torch::kLong),
+      .dst = torch::zeros({5}, torch::kLong),
+      .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+      .msg = torch::zeros({5, 1}),
+      .label_n_id = torch::tensor({1, 2, 3, 4, 5, 6}, torch::kLong),
+      .label_time = torch::tensor({15, 15, 25, 45, 45, 45}, torch::kLong),
+      .label_target = torch::arange(12, torch::kFloat32).reshape({6, 2})});
+  const auto table = store->label_event_table();
+
+  for (std::int64_t k = 0; k < table.time.size(0); ++k) {
+    const auto start = table.row_offset[k].template item<std::int64_t>();
+    const auto end = table.row_offset[k + 1].template item<std::int64_t>();
+    const auto batch = store->get_label_batch(start, end - start);
+    ASSERT_EQ(batch.time.size(0), end - start);
+    EXPECT_TRUE((batch.time == table.time[k]).all().template item<bool>());
+  }
+}
+
+TYPED_TEST(TGStoreTest, LabelEventTableReturnsCopies) {
+  const auto store = this->make_store(TestData{
+      .src = torch::zeros({5}, torch::kLong),
+      .dst = torch::zeros({5}, torch::kLong),
+      .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+      .msg = torch::zeros({5, 1}),
+      .label_n_id = torch::tensor({1, 2, 3, 4, 5, 6}, torch::kLong),
+      .label_time = torch::tensor({15, 15, 25, 45, 45, 45}, torch::kLong),
+      .label_target = torch::arange(12, torch::kFloat32).reshape({6, 2})});
+  auto table = store->label_event_table();
+  table.time.fill_(-1);
+  table.row_offset.fill_(-1);
+  table.cutoff.fill_(-1);
+
+  const auto fresh = store->label_event_table();
+  EXPECT_TRUE(
+      torch::equal(fresh.time, torch::tensor({15, 25, 45}, torch::kLong)));
+  EXPECT_TRUE(torch::equal(fresh.row_offset,
+                           torch::tensor({0, 2, 3, 6}, torch::kLong)));
+  EXPECT_TRUE(
+      torch::equal(fresh.cutoff, torch::tensor({1, 2, 4}, torch::kLong)));
+}
+
+TYPED_TEST(TGStoreTest, GetLabelBatchFullEqualsConcatenatedEvents) {
+  const auto store = this->make_store(TestData{
+      .src = torch::zeros({5}, torch::kLong),
+      .dst = torch::zeros({5}, torch::kLong),
+      .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+      .msg = torch::zeros({5, 1}),
+      .label_n_id = torch::tensor({1, 2, 3, 4, 5, 6}, torch::kLong),
+      .label_time = torch::tensor({15, 15, 25, 45, 45, 45}, torch::kLong),
+      .label_target = torch::arange(12, torch::kFloat32).reshape({6, 2})});
+  const auto num_events = store->label_event_table().time.size(0);
+
+  std::vector<torch::Tensor> n_ids, targets;
+  for (std::int64_t k = 0; k < num_events; ++k) {
+    const auto event = store->get_label_event(k);
+    n_ids.push_back(event.n_id);
+    targets.push_back(event.target);
+  }
+
+  const auto batch = store->get_label_batch(0, store->label_count());
+  EXPECT_TRUE(torch::equal(batch.n_id, torch::cat(n_ids)));
+  EXPECT_TRUE(torch::equal(batch.target, torch::cat(targets)));
+  EXPECT_TRUE(torch::equal(
+      batch.time, torch::tensor({15, 15, 25, 45, 45, 45}, torch::kLong)));
+}
+
+TYPED_TEST(TGStoreTest, GetLabelBatchRangeInsideEvents) {
+  const auto store = this->make_store(TestData{
+      .src = torch::zeros({5}, torch::kLong),
+      .dst = torch::zeros({5}, torch::kLong),
+      .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+      .msg = torch::zeros({5, 1}),
+      .label_n_id = torch::tensor({1, 2, 3, 4, 5, 6}, torch::kLong),
+      .label_time = torch::tensor({15, 15, 25, 45, 45, 45}, torch::kLong),
+      .label_target = torch::arange(12, torch::kFloat32).reshape({6, 2})});
+
+  // Starts inside event 0 (row 1), ends inside event 2 (row 4 exclusive)
+  const auto batch = store->get_label_batch(1, 3);
+  EXPECT_TRUE(torch::equal(batch.n_id, torch::tensor({2, 3, 4}, torch::kLong)));
+  EXPECT_TRUE(
+      torch::equal(batch.time, torch::tensor({15, 25, 45}, torch::kLong)));
+  EXPECT_TRUE(torch::equal(
+      batch.target,
+      torch::arange(12, torch::kFloat32).reshape({6, 2}).slice(0, 1, 4)));
+}
+
+TYPED_TEST(TGStoreTest, GetLabelBatchClampsAtEnd) {
+  const auto store = this->make_store(TestData{
+      .src = torch::zeros({5}, torch::kLong),
+      .dst = torch::zeros({5}, torch::kLong),
+      .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+      .msg = torch::zeros({5, 1}),
+      .label_n_id = torch::tensor({1, 2, 3, 4, 5, 6}, torch::kLong),
+      .label_time = torch::tensor({15, 15, 25, 45, 45, 45}, torch::kLong),
+      .label_target = torch::arange(12, torch::kFloat32).reshape({6, 2})});
+
+  const auto tail = store->get_label_batch(4, 10);
+  EXPECT_TRUE(torch::equal(tail.n_id, torch::tensor({5, 6}, torch::kLong)));
+  EXPECT_EQ(tail.target.size(0), 2);
+
+  for (const std::size_t start : {std::size_t{6}, std::size_t{100}}) {
+    const auto empty = store->get_label_batch(start, 5);
+    EXPECT_EQ(empty.n_id.sizes(), (std::vector<std::int64_t>{0}));
+    EXPECT_EQ(empty.time.sizes(), (std::vector<std::int64_t>{0}));
+    EXPECT_EQ(empty.target.sizes(), (std::vector<std::int64_t>{0, 2}));
+    EXPECT_EQ(empty.n_id.scalar_type(), torch::kLong);
+    EXPECT_EQ(empty.time.scalar_type(), torch::kLong);
+    EXPECT_EQ(empty.target.scalar_type(), torch::kFloat32);
+  }
+}
+
+TYPED_TEST(TGStoreTest, GetLabelBatchIsZeroCopy) {
+  const auto store = this->make_store(TestData{
+      .src = torch::zeros({5}, torch::kLong),
+      .dst = torch::zeros({5}, torch::kLong),
+      .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+      .msg = torch::zeros({5, 1}),
+      .label_n_id = torch::tensor({1, 2, 3, 4, 5, 6}, torch::kLong),
+      .label_time = torch::tensor({15, 15, 25, 45, 45, 45}, torch::kLong),
+      .label_target = torch::arange(12, torch::kFloat32).reshape({6, 2})});
+  const auto a = store->get_label_batch(2, 3);
+  const auto b = store->get_label_batch(2, 3);
+  EXPECT_EQ(a.n_id.data_ptr(), b.n_id.data_ptr());
+  EXPECT_EQ(a.time.data_ptr(), b.time.data_ptr());
+  EXPECT_EQ(a.target.data_ptr(), b.target.data_ptr());
+}
+
+TYPED_TEST(TGStoreTest, LabelApisWithoutLabels) {
+  const auto store =
+      this->make_store(TestData{.src = torch::zeros({5}, torch::kLong),
+                                .dst = torch::zeros({5}, torch::kLong),
+                                .time = torch::arange(5, torch::kLong),
+                                .msg = torch::zeros({5, 1})});
+
+  const auto table = store->label_event_table();
+  EXPECT_EQ(table.time.size(0), 0);
+  EXPECT_EQ(table.cutoff.size(0), 0);
+  EXPECT_TRUE(torch::equal(table.row_offset, torch::zeros({1}, torch::kLong)));
+  EXPECT_EQ(table.time.scalar_type(), torch::kLong);
+  EXPECT_EQ(table.cutoff.scalar_type(), torch::kLong);
+
+  const auto batch = store->get_label_batch(0, 10);
+  EXPECT_EQ(batch.n_id.sizes(), (std::vector<std::int64_t>{0}));
+  EXPECT_EQ(batch.time.sizes(), (std::vector<std::int64_t>{0}));
+  EXPECT_EQ(batch.target.sizes(), (std::vector<std::int64_t>{0, 0}));
+  EXPECT_EQ(batch.n_id.scalar_type(), torch::kLong);
+  EXPECT_EQ(batch.time.scalar_type(), torch::kLong);
+  EXPECT_EQ(batch.target.scalar_type(), torch::kFloat32);
 }
 
 TYPED_TEST(TGStoreTest, ValidateRejectsInvalidShapes) {

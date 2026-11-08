@@ -192,9 +192,12 @@ class TGStoreImpl final : public TGStore {
     }
 
     if (data.label_n_id.has_value()) {
-      const auto label_time = std::move(data.label_time.value());
-      const auto label_n_id = std::move(data.label_n_id.value());
-      const auto label_target = std::move(data.label_target.value());
+      label_time_ = std::move(data.label_time.value());
+      label_n_id_ = std::move(data.label_n_id.value());
+      label_target_ = std::move(data.label_target.value());
+      const auto label_time = *label_time_;
+      const auto label_n_id = *label_n_id_;
+      const auto label_target = *label_target_;
 
       // Find unique timestamps in label_time (assumed sorted)
       const auto [unique_ts, inverse_indices, counts] =
@@ -222,6 +225,17 @@ class TGStoreImpl final : public TGStore {
         stop_e_ids_.push_back(find_e_id_at_time(event_time));
 
         offset += count;
+      }
+
+      // Keep per-event metadata for label_event_table()
+      label_event_time_ = unique_ts.to(torch::kLong);
+      label_event_row_offset_ = torch::cat(
+          {torch::zeros({1}, torch::kLong), counts.to(torch::kLong).cumsum(0)});
+      label_event_cutoff_ = torch::empty(
+          {static_cast<std::int64_t>(stop_e_ids_.size())}, torch::kLong);
+      auto* cutoff_ptr = label_event_cutoff_.data_ptr<std::int64_t>();
+      for (std::size_t k = 0; k < stop_e_ids_.size(); ++k) {
+        cutoff_ptr[k] = static_cast<std::int64_t>(stop_e_ids_[k]);
       }
 
       auto get_edge_time = [&](std::size_t e_id) -> std::int64_t {
@@ -423,6 +437,36 @@ class TGStoreImpl final : public TGStore {
     };
   }
 
+  [[nodiscard]] auto get_label_batch(std::size_t start, std::size_t size,
+                                     torch::Device device) const
+      -> LabelBatch override {
+    if (!label_n_id_.has_value()) {
+      TGUF_LOG_DEBUG("TGStore: get_label_batch at {} (no labels)", start);
+      return LabelBatch{
+          .n_id = torch::empty({0}, torch::kLong).to(device, true),
+          .time = torch::empty({0}, torch::kLong).to(device, true),
+          .target = torch::empty({0, static_cast<std::int64_t>(label_dim_)},
+                                 torch::kFloat32)
+                        .to(device, true)};
+    }
+
+    const auto begin = std::min(start, num_labels_);
+    const auto end = begin + std::min(size, num_labels_ - begin);
+    const auto s = static_cast<std::int64_t>(begin);
+    const auto e = static_cast<std::int64_t>(end);
+    TGUF_LOG_DEBUG("TGStore: get_label_batch [{}:{}]", begin, end);
+
+    return LabelBatch{.n_id = label_n_id_->slice(0, s, e).to(device, true),
+                      .time = label_time_->slice(0, s, e).to(device, true),
+                      .target = label_target_->slice(0, s, e).to(device, true)};
+  }
+
+  [[nodiscard]] auto label_event_table() const -> LabelEventTable override {
+    return LabelEventTable{.time = label_event_time_.clone(),
+                           .row_offset = label_event_row_offset_.clone(),
+                           .cutoff = label_event_cutoff_.clone()};
+  }
+
  private:
   torch::Tensor src_, dst_, t_, msg_;
   std::optional<torch::Tensor> neg_dst_;
@@ -442,6 +486,11 @@ class TGStoreImpl final : public TGStore {
 
   std ::vector<LabelEvent> label_events_;
   std ::vector<std::size_t> stop_e_ids_;
+
+  std::optional<torch::Tensor> label_n_id_, label_time_, label_target_;
+  torch::Tensor label_event_time_ = torch::empty({0}, torch::kLong);
+  torch::Tensor label_event_row_offset_ = torch::zeros({1}, torch::kLong);
+  torch::Tensor label_event_cutoff_ = torch::empty({0}, torch::kLong);
 };
 
 }  // namespace detail
