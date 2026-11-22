@@ -19,9 +19,6 @@ execute_process(
   OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE nanobind_ROOT)
 find_package(nanobind CONFIG REQUIRED)
 
-set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
-set(CMAKE_INSTALL_RPATH "$ORIGIN;${CMAKE_BINARY_DIR}")
-
 nanobind_add_module(
     _tguf_py
     NB_STATIC
@@ -30,35 +27,31 @@ nanobind_add_module(
 
 target_link_libraries(_tguf_py PRIVATE tguf)
 
-nanobind_add_stub(
-    _tguf_stub
-    MODULE _tguf_py
-    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/_tguf_py.pyi"
-    PYTHON_PATH "$<TARGET_FILE_DIR:_tguf_py>"
-    DEPENDS _tguf_py
-)
+# Stubs are committed (tguf/_tguf_py.pyi), regenerate them with `make stubs`
 
-# Re-export generated stubs for mkdocs integration
-add_custom_command(
-    TARGET _tguf_stub POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        "${CMAKE_CURRENT_BINARY_DIR}/_tguf_py.pyi"
-        "${CMAKE_SOURCE_DIR}/python/tguf/_tguf_py.pyi"
-)
+# tguf is linked statically, so LibTorch is the only runtime dependency
+# $ORIGIN/../torch/lib: Look in the torch package next to tguf (for installed versions)
+# ${TGN_TORCH_LIB_DIR}: Look where the build-time torch lives (for build trees)
+if(APPLE)
+    set(TGN_TORCH_RPATH "@loader_path/../torch/lib")
+else()
+    set(TGN_TORCH_RPATH "$ORIGIN/../torch/lib")
+endif()
 
-# TODO(kuba): This is surely not the simplest way to do things
-set(LOCAL_TORCH_LIB "${CMAKE_BINARY_DIR}/_deps/libtorch-src/lib")
-get_target_property(TGUF_BINARY_DIR tguf BINARY_DIR)
-
-# $ORIGIN: Look in the current folder (for installed versions)
-# $ORIGIN/..: Look in the parent folder (common in build trees)
-# ${TGUF_BINARY_DIR}: Look exactly where the C++ build put libtguf.so
-# ${LOCAL_TORCH_LIB}: Look where FetchContent put LibTorch
 set_target_properties(_tguf_py PROPERTIES
-    BUILD_WITH_INSTALL_RPATH TRUE
-    INSTALL_RPATH "$ORIGIN;$ORIGIN/..;${TGUF_BINARY_DIR};${LOCAL_TORCH_LIB}"
+    BUILD_WITH_INSTALL_RPATH FALSE
+    BUILD_RPATH "${TGN_TORCH_LIB_DIR}"
+    INSTALL_RPATH "${TGN_TORCH_RPATH}"
 )
+
+# Record the torch version used at build time (checked on import in tguf/__init__.py)
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/_build_info.py"
+     "TORCH_VERSION = \"${TGN_TORCH_VERSION}\"\n")
 
 install(TARGETS _tguf_py
         LIBRARY DESTINATION tguf
+        COMPONENT python_bindings)
+
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/_build_info.py"
+        DESTINATION tguf
         COMPONENT python_bindings)

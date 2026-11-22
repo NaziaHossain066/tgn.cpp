@@ -21,13 +21,11 @@ if [ "$BUILD_MODE" == "serve" ]; then
         --with mkdocs-material \
         --with mkdocstrings[python] \
         --with mkdoxy \
-        --with-editable "$PROJECT_ROOT/python" \
         mkdocs serve
 else
     uv run \
         --with mkdocs-material \
         --with mkdocstrings[python] \
         --with mkdoxy \
-        --with-editable "$PROJECT_ROOT/python" \
         mkdocs build
 fi

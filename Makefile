@@ -20,7 +20,7 @@ ifneq ($(CUDA_VERSION), cpu)
     endif
 endif
 
-PYTHON_BUILD_FLAGS := -DTGN_BUILD_PYTHON=ON
+PYTHON_BUILD_FLAGS :=
 ifneq ($(CUDA_VERSION), cpu)
     PYTHON_BUILD_FLAGS += -DCMAKE_CUDA_ARCHITECTURES=$(GPU_ARCH)
 endif
@@ -81,6 +81,7 @@ help:
 	@echo "  make python                - Build and install Python bindings"
 	@echo "  make test-python           - Run Python-specific tests"
 	@echo "  make clean-python          - Run Python-specific build artifacts"
+	@echo "  make stubs                 - Regenerate python/tguf/_tguf_py.pyi after changing bind.cpp"
 	@echo "========================================================================"
 
 $(BUILD_DIR)/CMakeCache.txt:
@@ -140,7 +141,13 @@ test-models: _test_config
 	@cmake --build $(BUILD_DIR) --target test_tguf_models --parallel $(NPROCS)
 	@cd $(BUILD_DIR) && ctest -L models --output-on-failure -j $(NPROCS)
 
-data/%.tguf: python
+# Download runs in the Python dev env, build it only if missing
+PYTHON_VENV := python/.venv/bin/python
+
+$(PYTHON_VENV):
+	@$(MAKE) python
+
+data/%.tguf: | $(PYTHON_VENV)
 	@mkdir -p data
 	@if [ -f $@ ]; then \
 		echo "Dataset $* already exists at $@, skipping download."; \
@@ -175,21 +182,29 @@ download-%: data/%.tguf
 .PHONY: python
 python:
 	@(cd python && \
-		uv sync --group dev --no-install-project && \
+		uv sync --group dev --group data --no-install-project && \
 		CMAKE_GENERATOR="Unix Makefiles" \
 		SKBUILD_CMAKE_ARGS="$(PYTHON_BUILD_FLAGS)" \
 		uv pip install -e . --no-build-isolation)
 
 .PHONY: test-python
 test-python: python
-	@(cd python && uv run pytest test/)
+	@(cd python && uv run --no-sync pytest test/)
 
+# Regenerate python/tguf/_tguf_py.pyi after changing python/bind.cpp
+.PHONY: stubs
+stubs: python
+	@(cd python && \
+		.venv/bin/python -m nanobind.stubgen -m tguf._tguf_py -o tguf/_tguf_py.pyi && \
+		uvx ruff format tguf/_tguf_py.pyi)
+
+# Docs read the committed stub, no build needed
 .PHONY: docs
-docs: python
+docs:
 	@bash scripts/build_docs.sh
 
 .PHONY: docs-serve
-docs-serve: python
+docs-serve:
 	@bash scripts/build_docs.sh serve
 
 .PHONY: clean-python

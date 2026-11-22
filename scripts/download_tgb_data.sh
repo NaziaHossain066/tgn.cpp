@@ -10,21 +10,16 @@ if [ "$#" -ne 1 ]; then
     exit 1
 fi
 
-if ! command -v uv >/dev/null 2>&1; then
-    echo "uv is not installed. Install it first: https://docs.astral.sh/uv/getting-started/installation/"
+# Reuse the Python dev env from `make python` (tguf + `data` group)
+PYTHON="$PROJECT_ROOT/python/.venv/bin/python"
+if [ ! -x "$PYTHON" ]; then
+    echo "Python env not found at $PYTHON. Run 'make python' first."
     exit 1
 fi
 
 DATASET_NAME="$1"
 OUTPUT_PATH="$PROJECT_ROOT/data/$DATASET_NAME.tguf"
 
-uv run --no-project \
-    --with py-tgb \
-    --with numpy \
-    --with "torch @ https://download.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp310-cp310-manylinux_2_28_x86_64.whl" \
-    --with tqdm \
-    --with pandas==2.2.3 \
-    --with-editable "$PROJECT_ROOT/python" \
-    python "$PROJECT_ROOT/tools/download_tgb_to_tguf.py" \
+"$PYTHON" "$PROJECT_ROOT/tools/download_tgb_to_tguf.py" \
     --name "$DATASET_NAME" \
     --output "$OUTPUT_PATH"

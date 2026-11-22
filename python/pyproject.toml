@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Python bindings for tgn.cpp TGUF"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["torch>=2.5"]
 
 [dependency-groups]
 dev = [
@@ -12,7 +12,13 @@ dev = [
     "numpy",
     "torch",
     "nanobind>=2.0.0",
-    "scikit-build-core>=0.5.0",
+    "scikit-build-core>=0.10",
+]
+# Used by tools/download_tgb_to_tguf.py (make download-<ds>)
+data = [
+    "py-tgb",
+    "tqdm",
+    "pandas==2.2.3",
 ]
 
 [tool.uv]
@@ -20,7 +26,8 @@ managed = true
 package = true
 
 [tool.uv.sources]
-torch = { index = "pytorch-cpu" }
+# CPU torch for local dev only, dependents keep their own torch (CPU or CUDA)
+torch = { index = "pytorch-cpu", group = "dev" }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
@@ -28,32 +35,28 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [build-system]
-requires = ["scikit-build-core>=0.5.0", "nanobind>=2.0.0"]
+# torch is a build dependency but intentionally not listed: the extension must be built
+# against the consumer's torch. Provide it via uv `extra-build-dependencies`
+# (`match-runtime = true`), or build with `--no-build-isolation`.
+requires = ["scikit-build-core>=0.10", "nanobind>=2.0.0"]
 build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
-cmake.args = [
-    "-DCMAKE_CXX_COMPILER=clang++",
-    "-DOpenMP_CXX_FLAGS=-fopenmp=libomp",
-    "-DOpenMP_CXX_LIB_NAMES=omp",
-]
 install.components = ["python_bindings"]
-build-dir = "build"
 cmake.source-dir = ".."
 wheel.packages = ["tguf"]
+
+# Persistent build dir only for the editable dev install (incremental rebuilds),
+# wheel builds use a fresh temporary one
+[[tool.scikit-build.overrides]]
+if.state = "editable"
+build-dir = "build/{wheel_tag}"
 editable.rebuild = true
 
-[[tool.scikit-build.overrides]]
-if.platform-system = "linux"
-cmake.args = [
-    "-DOpenMP_omp_LIBRARY=/usr/lib/llvm-18/lib/libomp.so"
-]
-
-[[tool.scikit-build.overrides]]
-if.platform-system = "darwin"
-cmake.args = [
-    "-DOpenMP_omp_LIBRARY=/opt/homebrew/opt/libomp/lib/libomp.dylib"
-]
+[tool.scikit-build.cmake.define]
+TGN_BUILD_PYTHON = "ON"
+TGN_BUILD_MODELS = "OFF"
+TGN_NATIVE_OPTIMIZATIONS = "OFF"
 
 [tool.pytest.ini_options]
 addopts = [
